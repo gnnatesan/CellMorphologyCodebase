@@ -1,0 +1,67 @@
+import math
+import numpy as np
+import cv2
+import random
+
+#----------CAV #cav_path is the path of the cavin channel image of the slide
+cav_path = "C:\Projects\Ca2+_imaging\Zo_pics\Zo_1_CAV_layer_3D.tiff"
+cav = cv2.imread(cav_path)
+cav_2 = cv2.GaussianBlur(cv2.imread(cav_path,0),(5,5),0)
+cv2.imshow('',cav)
+
+#----------HCdye #cav_path is the path of the calcium channel image of the slide
+dye_path = "C:\Projects\Ca2+_imaging\Zo_pics\Zo_1_DYE_layer_3D.tiff"
+dye = cv2.imread(dye_path)
+ddye = cv2.imread(dye_path)
+gdye = cv2.GaussianBlur(cv2.imread(dye_path,0),(5,5),0)
+cv2.imshow('',dye)
+
+
+def contrast_creator(img): #returns equalized histogram of image
+    img = cv2.equalizeHist(img)
+    cv2.imwrite("C:\Projects\Ca2+_imaging\Zo_pics\Zo_1_DYE_contrast_3D.tiff",img)
+    cv2.imshow('',img)
+
+def POI_tag_v1(r,img,gray,y,x): #POI tags v1-v3 attempt to connect distinct "signal" components to segment cells 
+    go = (0,255,255)
+    if r == 'r':
+        go = (255,0,0)
+    xaxis,yaxis = img.shape[0],img.shape[1]
+    for n in range(0,yaxis - 2):
+        if gray[y+n,x] > gray[y+n+1,x] and gray[y+n,x] > gray[y+n-1,x]:
+            img[y+n,x] = go
+        else:
+            img[y+n,x] = (0,0,0)
+def POI_tag_v2(base,cav,img,y,x):
+    for n in range(0,1197):
+        if img[y+n,x][1] == 255:
+            for p in range(0,5):
+                if img[y+n-2+p,x+2][0] == 255 and base[y+n,x] > 60:
+                    img[y+n,x] = (0,255,0)
+                    cav[y+n,x] = (0,255,0)
+                    break
+
+def POI_tag_v3(img,gsimg,lay_2,base):
+    width = int(img.shape[1]/4)
+    for n in range(0,width):
+        POI_tag_v1('y',img,gsimg,1,(1+(4*n)))
+        POI_tag_v1('r',img,gsimg,1,(1+(4*n))+2)
+    for n in range(0,width - 2):
+        POI_tag_v2(base,lay_2,img,1,(5+(4*n)))
+
+def subtraction(dye,cav): #This function takes in the dye and cavin channels, and returns a signal that roughly corresponds to the cell membrane/edges of a slide
+    npdye = np.array(dye)
+    npcav = np.array(cav)
+    gro = npdye - npcav
+    gro[np.where(gro>205)] = 0
+    gro[np.where(gro<61)] = 0
+    #gro = gro + npdye
+    #gro[np.where(gro>255)] = 255
+    #gro[np.where(gro<0)] = 0
+
+    gro = cv2.equalizeHist(gro)
+    kernel = np.ones((4,4),np.uint8)
+    dilate = cv2.dilate(gro,kernel,iterations = 1)
+    dilate[np.where(dilate<180)] = 0
+    cv2.imshow('',gro)
+    return gro
