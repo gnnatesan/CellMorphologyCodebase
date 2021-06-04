@@ -111,7 +111,7 @@ def line(blur,img,points): #given a list of points that comprise the perimeter o
     return False
 
      
-shp = np.shape(dummy) #nonfunctional component of program that removes duplicate data points
+shp = np.shape(dummy) #component of program that removes duplicate data points
 cue = 0
 space = [['y.0','x.0','y','x','m']]
 for n in range(0,200000):
