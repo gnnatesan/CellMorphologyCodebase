@@ -1,0 +1,104 @@
+import math
+import numpy as np
+from numpy import linalg as LA
+from numpy import cov
+import cv2
+import random as rand
+
+#arr[arr > 255] = x
+#np.where(a < 4, a, -1)
+#gro[np.where(gro<210)] = 0
+
+#gro = cv2.equalizeHist(pic_base_enhanced)
+#gro = cv2.GaussianBlur(gro,(5,5),0)
+
+
+edgecase = lambda x,y: (x-abs(y-x))
+midpoint = lambda b,t: int((b-t)/2) + t
+distance = lambda a,b: math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2)
+
+def Dista(x1,y1,x2,y2):  #make this a lambda
+     distant = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)  
+     return distant
+     
+def firstcenter(base,img,x,y): #given a point inside a thresholded object, returns borders of that object on the vertical axis from the given point
+     #if base[y,x] < 120: img[y,x] = (0,0,255);return False
+     #if base[y,x] < 120: img[y,x] = (0,0,255);return False
+     height,width,topfirst,botfirst = img.shape[0],img.shape[1],False,False
+     topy1,boty1 = y,y
+     for n in range(0,edgecase(height,y)):
+          if botfirst == True and topfirst == True: break
+          if base[y + n,x] < 120 and base[y + n - 1,x] > 120: botfirst = True; boty1 = (y + n)    # img[y + n,x] = (0,255,255) #greater goes downward
+          if base[y - n,x] < 120 and base[y - n + 1,x] > 120: topfirst = True; topy1 = (y - n)
+     img[topy1:boty1,x] = (0,0,255) #lower to greater, top to bottom, y - n: y  + n, x, Note img[dely,x] = (color) alters vertical
+     img[midpoint(boty1,topy1),x] = (255,0,0)
+     return (topy1,boty1)
+
+def effvert(base,img,toop,p): #given two border references, returns border edges adjacent to input
+     x,mtop,mbot = p,toop[0],toop[1]
+     if base[int((mbot-mtop)/2)+mtop,x] < 120: return False
+     height,width,topfirst,botfirst = img.shape[0] - 10,img.shape[1],False,False
+     topy1,boty1 = mtop,mbot
+     edgecase(height,mtop)
+     if base[mtop,x] > 120: #Im not thrilled about these conditionals but it works
+          for n in range(0,edgecase(height,mtop)):
+               if base[mtop-n,x] < 120: topy1 = mtop - n; break
+     elif base[mtop,x] < 120:
+          for n in range(0,edgecase(height,mtop)):
+               if base[mtop+n,x] > 120: topy1 = mtop + n; break
+     if base[mbot,x] > 120:
+          for n in range(0,edgecase(height,mbot)):
+               if base[mbot+n,x] < 120: boty1 = mbot+n; break
+     elif base[mbot,x] < 120:
+          for n in range(0,edgecase(height,mbot)):
+               if base[mbot-n,x] > 120: boty1 = mbot-n; break
+     img[topy1:boty1,x] = (0,0,255)
+     return (topy1,boty1)
+
+def unit(base,img,x,y): #perimeter based floodfill algorithm for convex objects
+     if base[y,x] < 120: img[y:10+y,x] = (255,0,255); return False
+     width = img.shape[1]
+     lgo = firstcenter(base,img,x,y)
+     rgo,base_axis = lgo,[(x,midpoint(lgo[1],lgo[0]))]
+     lis,ris = True,True
+     for n in range(1,width): #For anybody that has to read this, I'm sorry.
+          if lis == False and ris == False: break
+          if ris == True:
+               if x+n > width - 2: return False
+               rgo = effvert(dapi_hist,dapi_fill,rgo,x+n)
+               if rgo == False: ris = False
+               elif isinstance(rgo, bool) == False :
+                    base_axis.append((x+n,(midpoint(rgo[1],rgo[0])), int(abs((rgo[1] - rgo[0])/2)) ))
+          if lis == True:
+               if x-n < 2: return False
+               lgo = effvert(dapi_hist,dapi_fill,lgo,x-n);
+               if lgo == False: lis = False
+               elif isinstance(lgo, bool) == False :
+                    base_axis.append((x-n,(midpoint(lgo[1],lgo[0])), int(abs((lgo[1] - lgo[0])/2)) )) #next, append these bad boys to the array
+     return sorted(base_axis)
+
+def lines(base,axis,img,coord): #linear regression basen on perimeter to find orientation.
+     if coord == False: return False
+     x_m,y_m = sum(q[0] for q in coord)/len(coord),sum(q[1] for q in coord)/len(coord)
+     xy = sum((q[0]*q[1]) for q in coord) - len(coord)*x_m*y_m
+     xx = sum((q[0]** 2) for q in coord) - len(coord)*(x_m ** 2)
+     m = -xy/xx
+     mid = coord[int(len(coord)/2)] #midpoint [x,y]
+     p1a = (coord[0][0],int(((mid[0] - coord[0][0])*m)+mid[1])) #remember, x is first
+     p2a = (coord[-1][0],int(((mid[0] - coord[-1][0])*m)+mid[1])) #formula structure is x, (xa - xc) * m + b = y # therefore, xc + (y - b)/m (due to inverted x, m^-1 is used) = xa 
+     dist = firstcenter(base,img,mid[0],mid[1])
+     p1b = (int(mid[0]+((dist[0] - mid[1])*m)),dist[0])
+     p2b = (int(mid[0]+((dist[1] - mid[1])*m)),dist[1])
+     #cv2.line(img,(x1,y1),(x2,y2),(255,0,255),1)
+     cv2.line(img,(p1a[0],p1a[1]),(p2a[0],p2a[1]),(255,0,0),1) #horizontal line
+     cv2.line(img,(p1b[0],p1b[1]),(p2b[0],p2b[1]),(0,255,0),1) #vertical line
+     slope = 0
+     if distance(p1a,p2a) > distance(p1b,p2b):
+          cv2.line(axis,(p1a[0],p1a[1]),(p2a[0],p2a[1]),(255,0,255),2)
+          slope = (m)
+     else:
+          cv2.line(axis,(p1b[0],p1b[1]),(p2b[0],p2b[1]),(0,255,0),2)
+          slope = (-1/m)
+     print([mid[1],mid[0],slope])
+     b,a = mid[0],mid[1]
+     img[a-5:a+5,b-5:b+5] = (250,250,0)
