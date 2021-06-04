@@ -1,0 +1,136 @@
+import math
+import numpy as np
+import cv2
+import random
+import pandas as pd
+
+#write the path of the image (in tiff form) in the path variable, as shown below
+path = "C:\Projects\Ca2+_imaging\Zo_pics\Zo_1_DAPI_layer_3D.tiff"
+pic = cv2.imread(path) #images with 3 color channel capabilities
+dummy = cv2.imread(path)
+gray = cv2.imread(path,0) #black and white image using manual thresholding
+gray = np.where(gray < 60, 0, gray)
+gray = np.where(gray > 60, 250, gray)
+gray_blur = gray
+
+def Distance(x1,y1,x2,y2): #calculates euclidean distance between two points
+     distant = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)  
+     return distant
+     
+def Vertical(img,blur,x,y): #given a point inside a discrete thresholded object, it tags  points on the vertical axis inside the object
+    red = (0,0,255)
+    xaxis = img.shape[0]
+    top,bot = 0,0
+    for n in range(x,xaxis-1):
+        if blur[n,y] < 40:
+            img[n,y] = red
+            bot = n
+            break
+        img[n,y] = red
+    for n in range(x,0,-1):
+        if blur[n,y] < 40:
+            img[n,y] = red 
+            top = n
+            break
+        img[n,y] = red
+    q = int((bot - top)/2) + top
+    img[q,y] = red
+    return img,q
+    
+def Vertcaps(img,blur,x,y):  #given a point inside a discrete thresholded object, it finds points on the vertical axis that border that object
+    xaxis = img.shape[0]
+    top,bot = 0,0
+    for n in range(x,xaxis-1):
+        if blur[n,y] < 40:
+            bot = n
+            break
+    for n in range(x,0,-1):
+        if blur[n,y] < 40:
+            top = n
+            break
+    return (top,bot)
+    
+def Horizon(img,blur,x,y): #given a point inside a discrete thresholded object, returns a list of points that comprise the perimeter of the object
+    if img[x,y][2] == 255 or blur[x,y] < 40: return [[0],[0]]
+    img[x,y] == (0,0,255)
+    yaxis = img.shape[1]
+    point1,point2 = [],[]
+    toop = Vertical(img,blur,x,y)
+    img,q = toop[0],toop[1]
+    point1.append(q),point2.append(y)
+    for n in range(y,yaxis):
+        if blur[q,n] < 40:
+            break
+        toop = Vertical(img,blur,q,n)
+        img,q = toop[0],toop[1]
+        point1.append(q),point2.append(n)
+    for n in range(y,0,-1):
+        if blur[q,n] < 40:
+            break
+        toop = Vertical(img,blur,q,n)
+        img,q = toop[0],toop[1]
+        point1.append(q),point2.append(n)
+    return [point1,point2]
+
+def line(blur,img,points): #given a list of points that comprise the perimeter of the object, uses a least squares based regression to return alist of the coordinates and slope of the structure
+    if points == [[0],[0]]: return False 
+    vrt,hrzn = points[0],points[1]
+    vrtsum,hrznsum = sum(vrt)/len(vrt),sum(hrzn)/len(vrt)#X is corresponding to hrzn, while y corresponds to vert
+    num,den = 0,0
+    bed = 0
+    mpx = hrzn[0]
+    for n in range(0,len(vrt)-1):
+        ecks,why = (vrt[n] - vrtsum),(hrzn[n] - hrznsum)
+        num,den = ((ecks * why) + num),((why * why) + den)
+        if hrzn[n] > hrzn[n+1] and hrzn[n] > hrzn[n-1]:
+            bed = hrzn[n]
+        if hrzn[n] > mpx:
+            mpx = hrzn[n]
+    if den == 0:
+         return False
+    m = num/den
+    b = (vrtsum - (hrznsum*m)) #y = mx+b
+    x1,x2 = hrzn[-1],bed
+    y1,y2 = int((m*x1)+b),int((m*x2)+b)
+    xc,yc = int((x1+x2)/2),int((y1+y2)/2)
+    if yc > img.shape[0] or xc > img.shape[1]:
+         return False
+    dist = Vertcaps(img,blur,yc,xc)
+    ytop,xtop = dist[0],int((dist[0]- xc) * -m)+ xc
+    ybot,xbot = dist[1],int((dist[1]- xc) * -m) + xc
+    towp,bowp = xc-int((xtop-xbot)/2),xc-int((xbot-xtop)/2)
+    if blur[yc,xc] < 40: return False
+    if Distance(x1,y1,x2,y2) > Distance(towp,ytop,bowp,ybot):
+        if Distance(x1,y1,x2,y2) >  300: return False
+        cv2.line(img,(x1,y1),(x2,y2),(255,0,255),1)
+        return [int(yc/10),int(xc/10),yc,xc,-m]
+    else: 
+        if Distance(towp,ytop,bowp,ybot) > 300 or m == 0: return False
+        cv2.line(img,(towp,ytop),(bowp,ybot),(0,255,0),1)
+        return [int(yc/10),int(xc/10),yc,xc,(-1/(m))]
+    return False
+
+     
+shp = np.shape(dummy) #nonfunctional component of program that removes duplicate data points
+cue = 0
+space = [['y.0','x.0','y','x','m']]
+for n in range(0,200000):
+     go = [[0],[0]]
+     px = (random.randint(0,shp[0] - 1))
+     py = (random.randint(0,shp[1] - 1))
+     #px = 351
+     #py = 267
+     if pic[px,py][2] < 250: go = Horizon(pic,gray_blur,py,px) #for mult 1, lo, cel,2
+     mol = line(gray_blur,dummy,go)
+     if mol != False:
+          #print(mol)
+          space.append(mol)
+          cue = cue + 1
+space = df = pd.DataFrame(space)
+df = df.sort_values(by=[0, 1])
+df2 = df.drop_duplicates([0,1])
+df3 = df2.drop([0, 1], axis=1)
+output = df3
+#cv2.imshow('',dummy) #The dummy variable represents image affected by flood fill
+cv2.imwrite("C:\Projects\Ca2+_imaging\image_data\AHA_SW_prez\ZO-1_toby.tiff",dummy)
+cv2.imshow('',pic) #The pic variable shows the major axes of each structure
